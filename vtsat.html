@@ -238,6 +238,7 @@ function save() {
 function clear() {
   save();
   list.innerHTML = "";
+  localStorage.setItem(VTSAT_LIST, list.innerHTML);
 }
 
 function update() {
