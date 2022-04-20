@@ -1,0 +1,270 @@
+<title>VideoTimeStampAnnotationTool</title>
+<style>
+.flex{
+  display: flex;
+}
+.flex div{
+}
+.right{
+  width: 200px;
+}
+.left{
+  width: calc(100% - 200px);
+}
+.nomergin{
+  margin: 0;
+  padding: 0;
+}
+video{
+  margin: 0;
+  padding: 0;
+}
+#hline{
+  border-top: 1px solid red;
+  width: 200px;
+  position: absolute;
+  top: 200px;
+  left: 100px;
+}
+#vline{
+  border-left: 1px solid red;
+  height: 200px;
+  position: absolute;
+  top: 100px;
+  left: 200px;
+}
+</style>
+
+<div class="flex">
+  <div class="left">
+    <video id="video" width="100%" controls tabindex="0" autobuffer preload>
+      <!--
+        <source type="video/webm; codecs=&quot;vp8, vorbis&quot;" src="video.webm"></source>
+        <source type="video/ogg; codecs=&quot;theora, vorbis&quot;" src="video.ogv"></source>
+      -->
+      <source type="video/mp4; codecs=&quot;avc1.42E01E, mp4a.40.2&quot;" src=""></source>
+      <p>not supported</p>
+    </video>
+    <div id="hline"></div>
+    <div id="vline"></div>
+  </div>
+
+  <div class="right">
+    <input type="file" id="filepicker">
+    <input type="text" id="file">
+
+    <hr>
+    Time:
+    <p id="time"></p>
+    <input type="number" id="step" value="0.05">
+
+    <hr>
+    Tag:
+    <input type="text" id="tag">
+
+    <hr>
+    <textarea id="list" rows="32" readonly></textarea>
+
+    <hr>
+    File name:
+    <input type="text" id="filename" value="file.csv">
+  </div>
+</div>
+<div>
+  Move marker: Shift + {W,A,S,D}<br>
+  Step: n or Space<br>
+  Back: b<br>
+  Mark and Step: m<br>
+  Step(1/10): , / .<br>
+  Step(x10): &lt; / &gt;<br>
+  Forward to last: l<br>
+  Delete to last: Shift + z<br>
+  Save: s<br>
+  Save and Clear: Shift + C<br>
+</div>
+
+<script>
+const VTSAT_LIST = "vtsat_list";
+const VTSAT_STEP = "vtsat_step";
+const VTSAT_TAG = "vtsat_tag";
+const VTSAT_FILENAME = "vtsat_filename";
+const VTSAT_VIDEO = "vtsat_video";
+const VTSAT_MX = "vtsat_mx";
+const VTSAT_MY = "vtsat_my";
+
+const filepicker = document.querySelector('#filepicker')
+const file = document.querySelector('#file')
+const time = document.querySelector('#time')
+const step = document.querySelector('#step')
+const tag = document.querySelector('#tag')
+const list = document.querySelector('#list')
+const video = document.querySelector('#video')
+const filename = document.querySelector('#filename')
+const hline = document.querySelector('#hline')
+const vline = document.querySelector('#vline')
+
+function handleKey(ev) {
+  let d = parseFloat(step.value);
+
+  switch (ev.key) {
+    case ",": next(d / -10); break;
+    case ".": next(d / 10); break;
+    case "<": next(d * -10); break;
+    case ">": next(d * 10); break;
+    case "b": next(d * -1); break;
+    case "n":
+    case " ": next(d); break;
+    case "m": record(tag.value); next(d); break;
+    case "s": save(); break;
+    case "C": clear(); break;
+    case "Z": deleteLast(); break;
+    case "l": forwardLast(); break;
+    case "W": moveMarker("W"); break;
+    case "S": moveMarker("S"); break;
+    case "A": moveMarker("A"); break;
+    case "D": moveMarker("D"); break;
+  }
+}
+
+document.onkeypress = handleKey;
+
+function setVideo(url) {
+  video.src = url;
+  video.onloadeddata = function() {
+    setMarker(markerX, markerY);
+    forwardLast();
+  }
+}
+
+step.onchange = function() {
+  localStorage.setItem(VTSAT_STEP, step.value);
+}
+
+tag.onchange = function() {
+  localStorage.setItem(VTSAT_TAG, tag.value);
+}
+
+filename.onchange = function() {
+  localStorage.setItem(VTSAT_FILENAME, filename.value);
+}
+
+file.onchange = function() {
+  setVideo(file.value);
+}
+
+filepicker.onchange = function() {
+  local_location = "" + location;
+  file.value = local_location.substring(0, local_location.lastIndexOf("/") +1) + filepicker.value.replace(/^.*\\/, "");
+  file.onchange();
+}
+
+function setMarker(x, y) {
+  hcenter = hline.clientWidth / -2;
+  vcenter = vline.clientHeight / -2;
+  videoW = video.clientWidth;
+  videoH = video.clientHeight;
+  pointX = videoW * x;
+  pointY = videoH * y;
+  hline.style.top = pointY;
+  hline.style.left = pointX + hcenter;
+  vline.style.top = pointY + vcenter;
+  vline.style.left = pointX;
+  localStorage.setItem(VTSAT_MX, x);
+  localStorage.setItem(VTSAT_MY, y);
+}
+
+function moveMarker(direction) {
+  let d = 0.001;
+  switch (direction) {
+    case "W": markerY -= d; break;
+    case "S": markerY += d; break;
+    case "A": markerX -= d; break;
+    case "D": markerX += d; break;
+  }
+  setMarker(markerX, markerY);
+}
+
+function next(d) {
+  if (!video.paused) {
+    video.pause();
+  }
+  video.currentTime = video.currentTime + d;
+  update();
+}
+
+function forwardLast() {
+  let l = list.innerHTML;
+  l = l.substring(0, l.length -1);
+  l = l.substring(l.lastIndexOf("\n"), l.length);
+  l = l.substring(0, l.indexOf(","));
+  video.currentTime = l;
+  update();
+}
+
+function deleteLast() {
+  let l = list.innerHTML;
+  l = l.substring(0, l.length -1);
+  list.innerHTML = l.substring(0, l.lastIndexOf("\n") +1);
+  localStorage.setItem(VTSAT_LIST, list.innerHTML);
+  forwardLast();
+}
+
+function record(t) {
+  list.innerHTML += video.currentTime + "," + t + "\n";
+  localStorage.setItem(VTSAT_LIST, list.innerHTML);
+}
+
+function save() {
+  var text = list.innerHTML;
+  if ("" == filename.value) {
+    filename.value = "file.csv"
+  }
+
+  var blob = new Blob([text], {type: "text/plain"});
+
+  if(window.navigator.msSaveBlob)
+  {
+    window.navigator.msSaveBlob(blob, filename.value);
+  } else {
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.target = '_blank';
+    a.download = filename.value;
+    a.click();
+    setTimeout(function(){URL.revokeObjectURL();}, 600000);
+  }
+}
+
+function clear() {
+  save();
+  list.innerHTML = "";
+}
+
+function update() {
+  time.innerHTML = video.currentTime;
+  list.scrollTop = list.scrollHeight;
+}
+
+function getLocal(key, def) {
+  value = localStorage.getItem(key);
+  if (value == null) {
+    return def;
+  }
+  return value;
+}
+
+function setup() {
+  list.innerHTML = getLocal(VTSAT_LIST, "");
+  step.value = getLocal(VTSAT_STEP, 0.025);
+  tag.value = getLocal(VTSAT_TAG, "");
+  filename.value = getLocal(VTSAT_FILENAME, "file.csv");
+  file.value = getLocal(VTSAT_VIDEO, "http://www.html5rocks.com/tutorials/video/basics/Chrome_ImF.mp4");
+  markerX = parseFloat(getLocal(VTSAT_MX, 0.5));
+  markerY = parseFloat(getLocal(VTSAT_MY, 0.5));
+  setVideo(file.value);
+}
+
+window.onload = setup;
+
+</script>
+
